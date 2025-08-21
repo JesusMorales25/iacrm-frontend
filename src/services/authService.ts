@@ -1,9 +1,14 @@
 import { jwtDecode } from "jwt-decode";
 
-// 🔹 Variables de entorno (Vite inyecta en build)
-const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY;
-const API_BASE_KEY = import.meta.env.VITE_API_KEY;
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// 🔹 Variables de entorno (inyectadas por Vite)
+const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || "token"; // fallback seguro
+const API_BASE_KEY = import.meta.env.VITE_API_KEY || "api_url"; // fallback seguro
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ""; // ⚠️ obligatorio en Vercel
+
+// 🚨 Validación temprana para debug
+if (!API_BASE_URL) {
+  console.error("❌ ERROR: VITE_API_BASE_URL no está definido en las variables de entorno.");
+}
 
 type UserRole = "superadmin" | "admin" | "user";
 
@@ -21,7 +26,7 @@ interface TokenPayload {
   [key: string]: unknown;
 }
 
-// 🔹 Devuelve URL base (localStorage > .env)
+// 🔹 Devuelve URL base (usa siempre .env, y si el user la cambia, se guarda en localStorage)
 function getApiBaseUrl() {
   return localStorage.getItem(API_BASE_KEY) || API_BASE_URL;
 }
@@ -30,8 +35,15 @@ function getStorage(remember?: boolean) {
   return remember ? window.localStorage : window.localStorage; // Forzado a localStorage
 }
 
+// 🔹 Login con API base asegurada
 export async function login(email: string, password: string, remember = false) {
-  const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
+  const baseUrl = getApiBaseUrl();
+
+  if (!baseUrl) {
+    throw new Error("❌ No se encontró la URL base de la API (VITE_API_BASE_URL).");
+  }
+
+  const res = await fetch(`${baseUrl}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: email, password }),
