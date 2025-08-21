@@ -1,14 +1,7 @@
 import { jwtDecode } from "jwt-decode";
+import { getApiUrl, API_STORAGE_KEY } from "../config";
 
-// 🔹 Variables de entorno (inyectadas por Vite)
-const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || "token"; // fallback seguro
-const API_BASE_KEY = import.meta.env.VITE_API_KEY || "api_url"; // fallback seguro
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ""; // ⚠️ obligatorio en Vercel
-
-// 🚨 Validación temprana para debug
-if (!API_BASE_URL) {
-  console.error("❌ ERROR: VITE_API_BASE_URL no está definido en las variables de entorno.");
-}
+const TOKEN_KEY = import.meta.env.VITE_TOKEN_KEY || "token";
 
 type UserRole = "superadmin" | "admin" | "user";
 
@@ -26,24 +19,9 @@ interface TokenPayload {
   [key: string]: unknown;
 }
 
-// 🔹 Devuelve URL base (usa siempre .env, y si el user la cambia, se guarda en localStorage)
-function getApiBaseUrl() {
-  // si existe en localStorage, úsala. Si no, fallback al .env
-  const fromStorage = localStorage.getItem(API_BASE_KEY);
-  return fromStorage ?? API_BASE_URL;
-}
-
-function getStorage(remember?: boolean) {
-  return remember ? window.localStorage : window.localStorage; // Forzado a localStorage
-}
-
-// 🔹 Login con API base asegurada
 export async function login(email: string, password: string, remember = false) {
-  const baseUrl = getApiBaseUrl();
-
-  if (!baseUrl) {
-    throw new Error("❌ No se encontró la URL base de la API (VITE_API_BASE_URL).");
-  }
+  const baseUrl = getApiUrl();
+  if (!baseUrl) throw new Error("❌ No se encontró la URL base de la API.");
 
   const res = await fetch(`${baseUrl}/auth/login`, {
     method: "POST",
@@ -54,11 +32,12 @@ export async function login(email: string, password: string, remember = false) {
   if (!res.ok) {
     let message = "Error de autenticación";
     try {
-      const err = await res.json();
-      message = err?.message || message;
-    } catch {
-      // ignorar error al parsear JSON
-    }
+			const err = await res.json();
+			message = err?.message || message;
+		} catch {
+			// Ignorar error si no se puede parsear JSON
+		}
+
     if (res.status === 401) message = "Credenciales inválidas";
     throw new Error(message);
   }
@@ -68,37 +47,16 @@ export async function login(email: string, password: string, remember = false) {
   if (!token) throw new Error("Token no recibido desde el servidor");
 
   saveToken(token, remember);
-
-  const user = getCurrentUser();
-  return { token, user };
+  return { token, user: getCurrentUser() };
 }
 
 export function saveToken(token: string, remember = false) {
-  removeToken();
-  const storage = getStorage(remember);
+  const storage = window.localStorage;
   storage.setItem(TOKEN_KEY, token);
 }
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY) || null;
-}
-
-export async function fetchWithAuth(input: RequestInfo, init?: RequestInit) {
-  const token = getToken();
-  const headers = {
-    ...(init?.headers || {}),
-    Authorization: token ? `Bearer ${token}` : undefined,
-    "Content-Type": "application/json",
-  };
-
-  const response = await fetch(input, { ...init, headers });
-
-  if (response.status === 401) {
-    logout();
-    window.location.href = "/login";
-  }
-
-  return response;
 }
 
 export function removeToken() {
@@ -108,13 +66,10 @@ export function removeToken() {
 export function logout() {
   try {
     removeToken();
-    localStorage.removeItem(API_BASE_KEY);
+    localStorage.removeItem(API_STORAGE_KEY);
     localStorage.removeItem("user_preferences");
     sessionStorage.clear();
-
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
+    window.location.href = "/login";
   } catch (err) {
     console.error("Error al cerrar sesión:", err);
   }
@@ -124,31 +79,21 @@ export function decodeToken(token: string): TokenPayload {
   return jwtDecode<TokenPayload>(token);
 }
 
-export function getCurrentUser(): {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  company?: string;
-} | null {
+export function getCurrentUser() {
   const token = getToken();
   if (!token) return null;
 
   try {
     const p = decodeToken(token);
-
-    const rawRole = (p.role as string) ?? "user";
-    const role: UserRole = mapBackendRole(rawRole);
-
-    const id = (p.id ?? p.sub ?? "").toString();
-    const email = (p.email ?? p.sub ?? "").toString();
-    const name = (p.name ?? email).toString();
-
-    const companyRaw = p.empresaId ?? p.empresa ?? p.company ?? "";
-    const company = companyRaw ? companyRaw.toString() : undefined;
-
-    return { id, email, name, role, company };
-  } catch (err) {
+    const role: UserRole = mapBackendRole(p.role as string ?? "user");
+    return {
+      id: (p.id ?? p.sub ?? "").toString(),
+      email: (p.email ?? p.sub ?? "").toString(),
+      name: (p.name ?? p.email ?? "").toString(),
+      role,
+      company: (p.empresaId ?? p.empresa ?? p.company ?? "").toString(),
+    };
+  } catch {
     removeToken();
     return null;
   }
@@ -158,12 +103,5 @@ function mapBackendRole(raw: string): UserRole {
   const normalized = raw.replace(/^ROLE_/i, "").toLowerCase();
   if (normalized.includes("superadmin")) return "superadmin";
   if (normalized.includes("admin")) return "admin";
-  if (
-    normalized.includes("user") ||
-    normalized.includes("agent") ||
-    normalized.includes("agente") ||
-    normalized.includes("supervisor")
-  )
-    return "user";
   return "user";
 }

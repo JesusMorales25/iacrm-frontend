@@ -1,14 +1,15 @@
-// main.tsx
-import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+import { API_STORAGE_KEY, getApiUrl } from "./config";
 
-// 1️⃣ Tomamos el valor desde las variables de entorno de Vite
-const defaultApiUrl = import.meta.env.VITE_API_URL;
-
-// 2️⃣ Guardamos solo si no existe en localStorage
-if (!localStorage.getItem('api_url')) {
-  localStorage.setItem('api_url', defaultApiUrl);
+// Inicializar api_url en localStorage solo si no existe
+if (!localStorage.getItem(API_STORAGE_KEY)) {
+  const apiUrl = getApiUrl();
+  if (apiUrl) {
+    localStorage.setItem(API_STORAGE_KEY, apiUrl);
+  }
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
+
