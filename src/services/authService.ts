@@ -28,7 +28,9 @@ interface TokenPayload {
 
 // 🔹 Devuelve URL base (usa siempre .env, y si el user la cambia, se guarda en localStorage)
 function getApiBaseUrl() {
-  return localStorage.getItem(API_BASE_KEY) || API_BASE_URL;
+  // si existe en localStorage, úsala. Si no, fallback al .env
+  const fromStorage = localStorage.getItem(API_BASE_KEY);
+  return fromStorage ?? API_BASE_URL;
 }
 
 function getStorage(remember?: boolean) {
